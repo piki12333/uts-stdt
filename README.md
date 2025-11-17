@@ -250,3 +250,103 @@ EOF
 
 exec postgres
 ```
+# Penjelasan Script Replikasi PostgreSQL
+
+## 1. Shebang
+```bash
+#!/usr/bin/env bash
+```
+Menentukan bahwa script dijalankan menggunakan shell **bash**.
+
+## 2. set -e
+```bash
+set -e
+```
+Menghentikan script jika ada perintah yang gagal, untuk mencegah data tidak konsisten.
+
+## 3. Variabel Konfigurasi
+```bash
+PRIMARY_HOST="primary"
+PRIMARY_PORT=5432
+REPL_USER="replicator"
+REPL_PASSWORD="replica_pass"
+PGDATA="/var/lib/postgresql/data"
+```
+
+Menentukan:
+
+- Host Primary  
+- Port Primary  
+- User replikasi  
+- Password user replikasi  
+- Direktori data PostgreSQL Replica  
+
+## 4. Menunggu Primary Siap
+```bash
+until pg_isready -h ${PRIMARY_HOST} -p ${PRIMARY_PORT} -U postgres >/dev/null 2>&1; do
+  sleep 1
+done
+```
+
+Replica tidak bisa mulai jika Primary belum hidup.  
+Bagian ini mengecek terus sampai Primary siap menerima koneksi.
+
+## 5. Set Password untuk Base Backup
+```bash
+export PGPASSWORD=${REPL_PASSWORD}
+```
+
+Agar **pg_basebackup** bisa login menggunakan user `replicator`.
+
+## 6. Menghapus Data Lama Replica
+```bash
+rm -rf ${PGDATA}/*
+```
+
+Replica harus mulai dari data kosong.
+
+## 7. Melakukan Base Backup dari Primary
+```bash
+pg_basebackup -h ${PRIMARY_HOST} -p ${PRIMARY_PORT} -D ${PGDATA} -U ${REPL_USER} -Fp -Xs -P -R
+```
+
+Bagian terpenting:
+
+- Mengambil salinan penuh dari Primary  
+- Mengisi folder data Replica  
+- Menyalin WAL  
+- Menambahkan konfigurasi replikasi otomatis (`-R`)  
+
+Setelah ini, Replica siap mengikuti Primary.
+
+## 8. Menulis Konfigurasi Tambahan Replica
+```bash
+cat >> ${PGDATA}/postgresql.conf <<EOF
+hot_standby = on
+listen_addresses = '*'
+EOF
+```
+
+Menambahkan:
+
+- `hot_standby = on` → Replica dapat menerima query read-only  
+- `listen_addresses = '*'` → menerima koneksi dari container manapun  
+
+## 9. Menjalankan PostgreSQL
+```bash
+exec postgres
+```
+
+Menjalankan PostgreSQL dalam mode Replica.
+
+---
+
+## 📌 Kesimpulan
+
+Script **entrypoint.sh** pada Replica berfungsi untuk:
+
+1. Menunggu Primary siap  
+2. Melakukan *base backup* otomatis  
+3. Mengatur environment Replica  
+4. Mengaktifkan
+
