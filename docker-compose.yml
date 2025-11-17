@@ -1,0 +1,36 @@
+version: "3.8"
+services:
+  primary:
+    image: postgres:15
+    container_name: pg_primary
+    environment:
+      POSTGRES_PASSWORD: primary_pass
+      POSTGRES_USER: postgres
+      POSTGRES_DB: demo
+    volumes:
+      - ./primary/data:/var/lib/postgresql/data
+      - ./primary/conf.d/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./primary/initdb:/docker-entrypoint-initdb.d
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    networks:
+      - pgnet
+    ports:
+      - "5432:5432"
+  replica:
+    image: postgres:15
+    container_name: pg_replica
+    depends_on:
+      - primary
+    environment:
+      POSTGRES_PASSWORD: replica_pass
+    volumes:
+      - ./replica/data:/var/lib/postgresql/data
+      - ./replica/entrypoint.sh:/docker-entrypoint-replica.sh:ro
+    entrypoint: ["/bin/bash", "/docker-entrypoint-replica.sh"]
+    networks:
+      - pgnet
+    ports:
+      - "5433:5432"
+networks:
+  pgnet:
+    driver: bridge
